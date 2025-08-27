@@ -23,7 +23,8 @@
 -- Most functions of GearScore are disabled while in combat to prevent any lag or unwanted effects. I have decided to enable a function that requires manual operation to work.
 -- If you're using the /gs window and target another player then the window will update for that player even if your in combat. However the addon will not inspect to request new information if your in combat. Mostly this will allow players to check gear/stats/expereince on a raid member while clearing trash.
 -- Added Halion 10/25 to MISC group of the EXP tab.
-
+GS_BlockAllInspects = false
+GS_HookEnabled = true
 ------------------------------------------------------------------------------
 function GearScore_OnUpdate(self, elapsed)
 --Code use to Function Timing of Transmition Information--
@@ -1362,38 +1363,49 @@ function GearScore_HookSetUnit(arg1, arg2)
 	--GearScore_Request(Name)
 end
 
-function GearScoreChatAdd(self,event,msg,arg1,...)
-if ( msg == "No estas en grupo." ) then return true; end   
-if ( GS_ExchangeName ) then if ( msg == "No player named '"..GS_ExchangeName.."' is currently playing." ) then GS_ExchangeCount = nil; print("¡Transmisión interrumpida!"); return true; end; end
-if ( GS_Settings["CHAT"] == 1 ) then
-	--msg = "(1234): "..msg
+function GearScoreChatAdd(self, event, msg, arg1, ...)
+    -- Ignorar mensajes de sistema específicos
+    if msg == "No estas en grupo." then 
+        return true 
+    end  
 
-		--print("A", GS_AddonMessage, "B", GS_Whisper, "C", GS_Sender)
-		local Who = arg1; local Message = msg; local ExtraMessage = ""; local ColorClass = "";
-		if GS_Data[GetRealmName()].Players[Who] then
-			if GS_Data[GetRealmName()].Players[Who].Class and GS_Classes[GS_Data[GetRealmName()].Players[Who].Class] and GS_ClassInfo[GS_Classes[GS_Data[GetRealmName()].Players[Who].Class]] then
-				ColorClass = "|cff"..string.format("%02x%02x%02x", GS_ClassInfo[GS_Classes[GS_Data[GetRealmName()].Players[Who].Class]].Red * 255, GS_ClassInfo[GS_Classes[GS_Data[GetRealmName()].Players[Who].Class]].Green * 255, GS_ClassInfo[GS_Classes[GS_Data[GetRealmName()].Players[Who].Class]].Blue * 255)
-			else
-				ColorClass = "|cffffffff" -- Blanco por defecto
-			end
-			local Red, Green, Blue = GearScore_GetQuality(GS_Data[GetRealmName()].Players[Who].GearScore)
-			local ColorGearScore = "|cff"..string.format("%02x%02x%02x", Red * 255, Blue * 255, Green * 255)
-			ExtraMessage = "("..ColorGearScore..tostring(GS_Data[GetRealmName()].Players[Who].GearScore).."|r): " ;
-			ExtraMessage = (ColorGearScore.."|Hplayer:X33"..Who.."|h("..tostring(GS_Data[GetRealmName()].Players[Who].GearScore)..")|h|r ")
+    if GS_ExchangeName and msg == ("No player named '"..GS_ExchangeName.."' is currently playing.") then
+        GS_ExchangeCount = nil
+        print("¡Transmisión interrumpida!")
+        return true
+    end
 
-		end
+    if GS_Settings["CHAT"] == 1 then
+        local Who = arg1
+        local Message = msg
+        local ExtraMessage = ""
+        local ColorClass = "|cffffffff" -- Blanco por defecto
 
-		local NewMessage = ExtraMessage..Message
-		--local NewMessage = Message
-		--local arg1 = arg1..ExtraMessage
-		--print(arg1)
+        if GS_Data[GetRealmName()].Players[Who] then
+            local playerData = GS_Data[GetRealmName()].Players[Who]
+            local classToken = GS_Classes[playerData.Class]
+            local classInfo = GS_ClassInfo[classToken]
 
---return true
-	return false,NewMessage,arg1,...
-else
-	return false
+            if classInfo then
+                ColorClass = "|cff"..string.format("%02x%02x%02x", classInfo.Red*255, classInfo.Green*255, classInfo.Blue*255)
+            end
+
+            local Red, Green, Blue = GearScore_GetQuality(playerData.GearScore)
+            local ColorGearScore = "|cff"..string.format("%02x%02x%02x", Red*255, Green*255, Blue*255)
+
+            ExtraMessage = (ColorGearScore.."|Hplayer:X33"..Who.."|h("..tostring(playerData.GearScore)..")|h|r ")
+        end
+
+        local NewMessage = ExtraMessage..Message
+        return false, NewMessage, arg1, ...
+    end
+
+    return false, msg, arg1, ...
 end
-end
+
+-- El hook debe ir después de la función y variables globales
+-- Coloca este bloque aquí para evitar el error de función no definida
+
 
 --function GearScoreChatAddddd(self,event,msg,arg1,...)
 --print("Captured Info: ", msg)
@@ -2796,8 +2808,39 @@ GearScore2:SetText("GearScore")
 GearScore2:SetPoint("BOTTOMLEFT",PaperDollFrame,"TOPLEFT",72,-265)
 GearScore2:Show()
 ItemRefTooltip:HookScript("OnTooltipSetItem", GearScore_HookRefItem)
-GearScore_Original_SetInventoryItem = GameTooltip.SetInventoryItem
-GameTooltip.SetInventoryItem = GearScore_OnEnter
+-- Usar hooksecurefunc para evitar taint
+function GS_ShouldBlockInspect()
+    if not GS_HookEnabled then
+        return true
+    end
+    if GS_BlockAllInspects then
+        return true
+    end
+    if PaperDollFrame and PaperDollFrame:IsVisible() then
+        return true
+    end
+    local _, class = UnitClass("player")
+    if class == "ROGUE" then
+        local hasMain, _, _, hasOff = GetWeaponEnchantInfo()
+        if hasMain or hasOff then
+            return true
+        end
+    end
+    return false
+end
+
+
+if not GearScore_Hooked then
+	hooksecurefunc(GameTooltip, "SetInventoryItem", function(self, ...)
+		-- Añade aquí la funcionalidad extra de GearScore_OnEnter
+		if not GS_ShouldBlockInspect() and UnitName("target") then
+			NotifyInspect("target")
+			GS_LastNotified = UnitName("target")
+		end
+		-- Si necesitas más lógica, añádela aquí
+	end)
+	GearScore_Hooked = true
+end
 -- Función simple para obtener información de gemas
 function GS_GetPlayerGems(playerName)
 	if not GS_Data[GetRealmName()].Players[playerName] or not GS_Data[GetRealmName()].Players[playerName].Equip then return end
@@ -3458,6 +3501,10 @@ GearScore_CreateHistoryButton()
 
 GS_DisplayFrame:Hide()
 LibQTip = LibStub("LibQTipClick-1.1")
+
+
+
+
 
 
 
