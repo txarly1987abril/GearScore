@@ -111,22 +111,16 @@ local _, addon = ...
 -- Nuevo botón "Copiar BIS" en la ventana /gs
 
 -- Definir el StaticPopupDialog una sola vez, global
-StaticPopupDialogs = StaticPopupDialogs or {}
-if not StaticPopupDialogs["EQUIPBIS_COPY_SET"] then
-    StaticPopupDialogs["EQUIPBIS_COPY_SET"] = {
+if not _G.StaticPopupDialogs["EQUIPBIS_COPY_SET"] then
+    _G.StaticPopupDialogs["EQUIPBIS_COPY_SET"] = {
         text = "¿A qué set de EquipBIS quieres copiar el equipo inspeccionado?",
         button1 = "Main",
         button2 = "Dual",
         OnAccept = function()
-            -- print("[EquipBIS][DEBUG] Botón Main pulsado (OnAccept)")
             _G.CopyInspectedToEquipBIS("main")
         end,
         OnCancel = function()
-            -- print("[EquipBIS][DEBUG] Botón Dual pulsado (OnCancel)")
             _G.CopyInspectedToEquipBIS("dual")
-        end,
-        OnShow = function()
-            -- print("[EquipBIS][DEBUG] StaticPopup EQUIPBIS_COPY_SET mostrado")
         end,
         timeout = 0,
         whileDead = true,
@@ -258,10 +252,10 @@ end
 
 -- Tabla para guardar los ítems BIS por slot
 -- Tabla manual de stats de gemas (ID de gema -> tabla de stats)
-local BIS_GemStats = {
-    [3525] = { ITEM_MOD_ARMOR_PENETRATION_RATING_SHORT = 20 }, -- Rubí cárdeno fracturado en ultimowow
-    -- Puedes añadir más gemas aquí si lo necesitas
-}
+-- local BIS_GemStats = {
+--     [3525] = { ITEM_MOD_ARMOR_PENETRATION_RATING_SHORT = 20 }, -- Rubí cárdeno fracturado en ultimowow
+--     -- Puedes añadir más gemas aquí si lo necesitas
+-- }
 -- Dropdown de clase para conversiones de stats
 -- Guardar raza siempre disponible
 function SaveRace()
@@ -603,453 +597,39 @@ f:SetScript("OnEvent", function(self, event, addonName)
 end)
 
 -- Calcular y mostrar los stats totales del set BIS configurado
+--[[
 local function BIS_CalculateStats()
-    local totalStats = {}
-    -- Copiar stats base por personaje y set si existen
-    local realm, name = getBISKey()
-    if BIS_BaseStats and BIS_BaseStats[realm] and BIS_BaseStats[realm][name] and BIS_BaseStats[realm][name][BIS_CurrentSet] then
-        for k, v in pairs(BIS_BaseStats[realm][name][BIS_CurrentSet]) do
-            totalStats[k] = v
-        end
-    end
-    -- ...existing code...
-    -- ...existing code...
-    -- Sumar stats de las piezas configuradas
-    for i=1,18 do
-        local slotName = "BIS_Frame"..i
-        local itemLink = BIS_Items and BIS_Items[slotName]
-        if itemLink and type(itemLink) == "string" and itemLink:find("^|c") and itemLink:find("|Hitem:") then
-            local itemName = GetItemInfo(itemLink)
-            local stats
-            if BonusScanner and BonusScanner.ScanItem then
-                local ok, result = pcall(function()
-                    return BonusScanner:ScanItem(itemLink)
-                end)
-                if ok and result and type(result) == "table" then
-                    stats = result
-                end
-            end
-            if not stats or (type(stats)=="table" and not next(stats)) then
-                stats = GetItemStats(itemLink)
-            end
-            if stats and next(stats) then
-                for stat, value in pairs(stats) do
-                    if stat == "HIT_PCT" then
-                        hitPct_equipo = (hitPct_equipo or 0) + value
-                    else
-                        totalStats[stat] = (totalStats[stat] or 0) + value
-                    end
-                end
-            end
-            -- ...existing code...
-        end
-    end
-    -- Unificar STR y STRENGTH en ITEM_MOD_STRENGTH_SHORT después de sumar todo
-    if totalStats["STR"] then
-        totalStats["ITEM_MOD_STRENGTH_SHORT"] = (totalStats["ITEM_MOD_STRENGTH_SHORT"] or 0) + totalStats["STR"]
-        totalStats["STR"] = nil
-    end
-    if totalStats["STRENGTH"] then
-        totalStats["ITEM_MOD_STRENGTH_SHORT"] = (totalStats["ITEM_MOD_STRENGTH_SHORT"] or 0) + totalStats["STRENGTH"]
-        totalStats["STRENGTH"] = nil
-    end
-    local missingCache = false
-    local shadowResPct = 0
-    local arcaneResPct = 0
-    local natureResPct = 0
-    local frostResPct = 0
-    local fireResPct = 0
-    local spiritPct = 0
-    local dodgePct = 0
-    local hitPct_equipo = 0
-    local hitPct_racial = 0
-    -- Sumar stats de las piezas configuradas
-    for i=1,18 do
-        local slotName = "BIS_Frame"..i
-        local itemLink = BIS_Items and BIS_Items[slotName]
-        if itemLink and type(itemLink) == "string" and itemLink:find("^|c") and itemLink:find("|Hitem:") then
-            local itemName = GetItemInfo(itemLink)
-            local stats
-            if BonusScanner and BonusScanner.ScanItem then
-                local ok, result = pcall(function()
-                    return BonusScanner:ScanItem(itemLink)
-                end)
-                if ok and result and type(result) == "table" then
-                    stats = result
-                end
-            end
-            if not stats or (type(stats)=="table" and not next(stats)) then
-                stats = GetItemStats(itemLink)
-            end
-            if stats and next(stats) then
-                for stat, value in pairs(stats) do
-                    totalStats[stat] = (totalStats[stat] or 0) + value
-                end
-            end
-            -- Sumar stats de las gemas manualmente y marcar missingCache si alguna no está en caché
-            local itemString = itemLink:match("Hitem:([%d:]+)")
-            if itemString then
-                local parts = {}
-                for v in string.gmatch(itemString, "[^:]+") do table.insert(parts, v) end
-                -- parts[3], [4], [5] = gem1, gem2, gem3
-                for gemIdx=3,5 do
-                    local gemID = tonumber(parts[gemIdx]) or 0
-                    if gemID > 0 then
-                        if DEFAULT_CHAT_FRAME then
-                            DEFAULT_CHAT_FRAME:AddMessage("[BIS DEBUG] Gema detectada en slot "..tostring(slotName)..": ID="..tostring(gemID))
-                        end
-                        local gemLink = "item:"..gemID..":0:0:0:0:0:0:0"
-                        local gemName = GetItemInfo(gemLink)
-                        if not gemName then
-                            missingCache = true
-                            local loadCmd = "/run print(select(2,GetItemInfo("..gemID..")))"
-                            -- print("[BIS] Gema ", gemID, "no está en caché. Copia y pega este comando en el chat para cargarla:", loadCmd)
-                            if DEFAULT_CHAT_FRAME then
---                                DEFAULT_CHAT_FRAME:AddMessage("[BIS] Copia y pega en el chat para cargar la gema: "..loadCmd)
-                            else
---                                SendChatMessage("[BIS] Copia y pega en el chat para cargar la gema: "..loadCmd, "SAY")
-                            end
-                        end
-                        local gemStats = GetItemStats(gemLink)
-                        if gemStats and next(gemStats) then
-                            for k,v in pairs(gemStats) do
-                                totalStats[k] = (totalStats[k] or 0) + v
-                                if DEFAULT_CHAT_FRAME then
-                                    DEFAULT_CHAT_FRAME:AddMessage("[BIS DEBUG] GemStat: "..tostring(k).." = "..tostring(v))
-                                end
-                                -- Ya no sumamos a ARMORPEN aquí para evitar doble conteo
-                                if (k == "ARMOR_PENETRATION" or k == "ARMORPEN") then
-                                    totalStats["ITEM_MOD_ARMOR_PENETRATION_RATING_SHORT"] = (totalStats["ITEM_MOD_ARMOR_PENETRATION_RATING_SHORT"] or 0) + v
-                                end
-                            end
-                        end
-                        -- SIEMPRE sumar stats manuales de la tabla BIS_GemStats si existen
-                        if BIS_GemStats[gemID] then
-                            for k,v in pairs(BIS_GemStats[gemID]) do
-                                totalStats[k] = (totalStats[k] or 0) + v
-                                if DEFAULT_CHAT_FRAME then
-                                    DEFAULT_CHAT_FRAME:AddMessage("[BIS DEBUG] GemStat (manual): "..tostring(k).." = "..tostring(v).." (Gema manual ID="..tostring(gemID)..")")
-                                end
-                                -- Ya no sumamos a ARMORPEN aquí para evitar doble conteo
-                                if (k == "ARMOR_PENETRATION" or k == "ARMORPEN") then
-                                    totalStats["ITEM_MOD_ARMOR_PENETRATION_RATING_SHORT"] = (totalStats["ITEM_MOD_ARMOR_PENETRATION_RATING_SHORT"] or 0) + v
-                                end
-                            end
-                        end
-                        -- else
-                        --     print("[BIS] Gem", gemID, "sin stats")
-                        -- end
-                    end
-                end
-            end
-        else
-            -- print("[BIS] Slot:", slotName, "NO LINK")
-        end
-    end
-    -- Unificar STA en ITEM_MOD_STAMINA_SHORT antes de aplicar bonus racial
-    if totalStats["STA"] then
-        totalStats["ITEM_MOD_STAMINA_SHORT"] = (totalStats["ITEM_MOD_STAMINA_SHORT"] or 0) + totalStats["STA"]
-        totalStats["STA"] = nil
-    end
-    -- Unificar SPI en ITEM_MOD_SPIRIT_SHORT antes de aplicar bonus racial (igual que aguante)
-    if totalStats["SPI"] then
-        totalStats["ITEM_MOD_SPIRIT_SHORT"] = (totalStats["ITEM_MOD_SPIRIT_SHORT"] or 0) + totalStats["SPI"]
-        totalStats["SPI"] = nil
-    end
-    -- Aplica modificadores raciales, pero el bonus de % aguante se aplica al final y se redondea
-    local staminaPct = 0
-    -- Debug eliminado
-    if BIS_RaceModifiers[BIS_SelectedRace] then
-        for stat, value in pairs(BIS_RaceModifiers[BIS_SelectedRace]) do
-            if stat == "STAMINA_PCT" then
-                staminaPct = value
-            elseif stat == "SHADOWRES_PCT" then
-                shadowResPct = value
-            elseif stat == "ARCANERES_PCT" then
-                arcaneResPct = value
-            elseif stat == "NATURERES_PCT" then
-                natureResPct = value
-            elseif stat == "FROSTRES_PCT" then
-                frostResPct = value
-            elseif stat == "FIRERES_PCT" then
-                fireResPct = value
-            elseif stat == "SPIRIT_PCT" then
-                spiritPct = value
-            elseif stat == "DODGE_PCT" then
-                dodgePct = value
-            elseif stat == "HIT_PCT" then
-                hitPct_racial = (hitPct_racial or 0) + value
-            else
---                totalStats[stat] = (totalStats[stat] or 0) + value
-            end
-        end
-    end
-    -- Bonus % esquiva elfo de la noche
-    if dodgePct > 0 and totalStats["DODGE"] and totalStats["DODGE"] > 0 then
-        local oldDodge = totalStats["DODGE"]
-        totalStats["DODGE"] = math.floor(totalStats["DODGE"] * (1 + dodgePct/100) + 0.5)
-    end
-    -- Debug eliminado
-    if staminaPct > 0 and totalStats["ITEM_MOD_STAMINA_SHORT"] and totalStats["ITEM_MOD_STAMINA_SHORT"] > 0 then
-        local oldStam = totalStats["ITEM_MOD_STAMINA_SHORT"]
-        totalStats["ITEM_MOD_STAMINA_SHORT"] = math.floor(totalStats["ITEM_MOD_STAMINA_SHORT"] * (1 + staminaPct/100) + 0.5)
-    end
-    -- Bonus % espíritu humano
-    if spiritPct > 0 and totalStats["ITEM_MOD_SPIRIT_SHORT"] and totalStats["ITEM_MOD_SPIRIT_SHORT"] > 0 then
-        local oldSpirit = totalStats["ITEM_MOD_SPIRIT_SHORT"]
-        totalStats["ITEM_MOD_SPIRIT_SHORT"] = math.floor(totalStats["ITEM_MOD_SPIRIT_SHORT"] * (1 + spiritPct/100) + 0.5)
-    end
-    -- Aplicar bonus de % resistencia a las sombras como valor real
-    if shadowResPct > 0 and totalStats["SHADOWRES"] and totalStats["SHADOWRES"] > 0 then
-        local oldShadowRes = totalStats["SHADOWRES"]
-        totalStats["SHADOWRES"] = math.floor(totalStats["SHADOWRES"] * (1 + shadowResPct/100) + 0.5)
-    end
-    -- Elfo de sangre: aplicar bonus de % a todas las resistencias mágicas
-    if arcaneResPct > 0 and totalStats["ARCANERES"] and totalStats["ARCANERES"] > 0 then
-        local oldArcane = totalStats["ARCANERES"]
-        totalStats["ARCANERES"] = math.floor(totalStats["ARCANERES"] * (1 + arcaneResPct/100) + 0.5)
-    end
-    if natureResPct > 0 and totalStats["NATURERES"] and totalStats["NATURERES"] > 0 then
-        local oldNature = totalStats["NATURERES"]
-        totalStats["NATURERES"] = math.floor(totalStats["NATURERES"] * (1 + natureResPct/100) + 0.5)
-    end
-    if frostResPct > 0 and totalStats["FROSTRES"] and totalStats["FROSTRES"] > 0 then
-        local oldFrost = totalStats["FROSTRES"]
-        totalStats["FROSTRES"] = math.floor(totalStats["FROSTRES"] * (1 + frostResPct/100) + 0.5)
-    end
-    if fireResPct > 0 and totalStats["FIRERES"] and totalStats["FIRERES"] > 0 then
-        local oldFire = totalStats["FIRERES"]
-        totalStats["FIRERES"] = math.floor(totalStats["FIRERES"] * (1 + fireResPct/100) + 0.5)
-    end
-    -- Bonus % índice de golpe (Draenei), igual que resistencias mágicas
-    local hitPct_total = (hitPct_equipo or 0) + (hitPct_racial or 0)
-    if hitPct_total > 0 then
-        local hitKeys = {"HIT", "HIT_RATING", "ITEM_MOD_HIT_RATING_SHORT", "TOHIT"}
-        for _, key in ipairs(hitKeys) do
-            if totalStats[key] and totalStats[key] > 0 then
-                local oldHit = totalStats[key]
-                totalStats[key] = math.floor(oldHit * (1 + hitPct_total/100) + 0.5)
-            end
-        end
-    end
-    -- Debug eliminado
-    return totalStats, missingCache
+    -- Función deshabilitada para evitar taint y problemas de estadísticas
+    return {}, false
 end
+]]
 
 -- Tabla de mapeo de stats a nombres amigables en español
-local BIS_StatNames = {
-    HEALTH = "Vida",
-    FROSTRES = "Resistencia escarcha",
-    SHADOWRES = "Resistencia a las sombras",
-    ARCANERES = "Resistencia a lo arcano",
-    NATURERES = "Resistencia a la naturaleza",
-    FIRERES = "Resistencia al fuego",
-    -- Alias cortos equivalentes para los stats largos oficiales
-    STRENGTH = "Fuerza",
-    AGILITY = "Agilidad",
-    INTELLECT = "Intelecto",
-    SPIRIT = "Espíritu",
-    STAMINA = "Aguante",
-    ATTACK_POWER = "Poder de ataque",
-    SPELL_POWER = "Poder con hechizos",
-    CRIT_RATING = "Crítico",
-    HASTE_RATING = "Celeridad",
-    HIT_RATING = "Índice de golpe",
-    EXPERTISE = "Pericia",
-    ARMOR_PENETRATION = "Penetración de armadura",
-    MASTERY = "Maestría",
-    DODGE_RATING = "Esquivar",
-    PARRY_RATING = "Parar",
-    RESILIENCE_RATING = "Temple",
-    ARMOR = "Armadura",
-    MANA_REGEN = "Regeneración de maná",
-    SPELL_PENETRATION = "Penetración de hechizos",
-    BLOCK_RATING = "Bloqueo",
-    DEFENSE_SKILL = "Defensa",
-    HIT_TAKEN = "Reducción de golpe recibido",
-    CRIT_MELEE = "Crítico (Melee)",
-    CRIT_RANGED = "Crítico (Distancia)",
-    CRIT_SPELL = "Crítico (Hechizo)",
-    -- Nombres largos oficiales
-    ITEM_MOD_STRENGTH_SHORT = "Fuerza",
-    ITEM_MOD_AGILITY_SHORT = "Agilidad",
-    ITEM_MOD_INTELLECT_SHORT = "Intelecto",
-    ITEM_MOD_SPIRIT_SHORT = "Espíritu",
-    ITEM_MOD_STAMINA_SHORT = "Aguante",
-    ITEM_MOD_ATTACK_POWER_SHORT = "Poder de ataque",
-    ITEM_MOD_SPELL_POWER_SHORT = "Poder con hechizos",
-    ITEM_MOD_CRIT_RATING_SHORT = "Crítico",
-    ITEM_MOD_HASTE_RATING_SHORT = "Celeridad",
-    ITEM_MOD_HIT_RATING_SHORT = "Índice de golpe",
-    ITEM_MOD_EXPERTISE_RATING_SHORT = "Pericia",
-    ITEM_MOD_ARMOR_PENETRATION_RATING_SHORT = "Penetración de armadura",
-    ITEM_MOD_MASTERY_RATING_SHORT = "Maestría",
-    ITEM_MOD_DODGE_RATING_SHORT = "Esquivar",
-    ITEM_MOD_PARRY_RATING_SHORT = "Parar",
-    ITEM_MOD_RESILIENCE_RATING_SHORT = "Temple",
-    ITEM_MOD_ARMOR_SHORT = "Armadura",
-    ITEM_MOD_MANA_REGENERATION_SHORT = "Regeneración de maná",
-    ITEM_MOD_SPELL_PENETRATION_SHORT = "Penetración de hechizos",
-    ITEM_MOD_BLOCK_RATING_SHORT = "Bloqueo",
-    ITEM_MOD_DEFENSE_SKILL_RATING = "Defensa",
-    ITEM_MOD_HIT_TAKEN_RATING_SHORT = "Reducción de golpe recibido",
-    ITEM_MOD_DODGE_RATING = "Esquivar",
-    ITEM_MOD_PARRY_RATING = "Parar",
-    ITEM_MOD_BLOCK_RATING = "Bloqueo",
-    ITEM_MOD_CRIT_MELEE_RATING = "Crítico (Melee)",
-    ITEM_MOD_CRIT_RANGED_RATING = "Crítico (Distancia)",
-    ITEM_MOD_CRIT_SPELL_RATING = "Crítico (Hechizo)",
-    -- Nombres cortos de GetItemStats/BonusScanner
-    STR = "Fuerza",
-    AGI = "Agilidad",
-    INT = "Intelecto",
-    SPI = "Espíritu",
-    STA = "Aguante",
-    CRIT = "Crítico",
-    HASTE = "Celeridad",
-    HIT = "Índice de golpe",
-    EXP = "Pericia",
-    ARMOR = "Armadura",
-    MANAREG = "Reg de maná(MP5)",
-    SPELLPEN = "Pen. de hechizos",
-    BLOCK = "Bloqueo",
-    DODGE = "Índice de esquivar",
-    PARRY = "Parar",
-    RESILIENCE = "Temple",
-    SPELLPOW = "Poder con hechizos",
-    ATTACKPOWER = "Poder de ataque",
-    SPELLPOWER = "Poder con hechizos",
-    -- Otros posibles
-    MP5 = "Regeneración de maná (MP5)",
-    ARMORPEN = "Penetración de armadura",
-    MASTERY = "Maestría",
-    DEFENSE = "Defensa",
-    -- Puedes añadir más según lo que veas en el chat
-}
+-- local BIS_StatNames = {} -- Tabla de nombres de stats deshabilitada
 
-local BIS_StatOrder = {
-    "ITEM_MOD_STRENGTH_SHORT",
-    "ITEM_MOD_AGILITY_SHORT",
-    "ITEM_MOD_INTELLECT_SHORT",
-    "ITEM_MOD_SPIRIT_SHORT",
-    "ITEM_MOD_STAMINA_SHORT",
-    "ITEM_MOD_ATTACK_POWER_SHORT",
-    "ITEM_MOD_SPELL_POWER_SHORT",
-    "ITEM_MOD_CRIT_RATING_SHORT",
-    "ITEM_MOD_HASTE_RATING_SHORT",
-    "ITEM_MOD_HIT_RATING_SHORT",
-    -- "ITEM_MOD_EXPERTISE_RATING_SHORT", -- Eliminado para no mostrar rating de pericia
-    "ITEM_MOD_ARMOR_PENETRATION_RATING_SHORT",
-    "ITEM_MOD_MASTERY_RATING_SHORT",
-    "ITEM_MOD_DODGE_RATING_SHORT",
-    "ITEM_MOD_PARRY_RATING_SHORT",
-    "ITEM_MOD_RESILIENCE_RATING_SHORT",
-    "ITEM_MOD_ARMOR_SHORT",
-    "ITEM_MOD_MANA_REGENERATION_SHORT",
-    "ITEM_MOD_SPELL_PENETRATION_SHORT",
-    "ITEM_MOD_BLOCK_RATING_SHORT",
-}
+-- local BIS_StatOrder = {} -- Orden de stats deshabilitado
 
 -- Mostrar los stats en el frame BIS (solo los principales y con nombres legibles)
-function BIS_UpdateStatsText()
-    if not BIS_StatsText then return end
-    -- Reducir el tamaño de fuente para los bonus raciales y limitar el ancho para ajuste automático
-    if BIS_StatsText.SetFont then
-        BIS_StatsText:SetFont("Fonts\\FRIZQT__.TTF", 13) -- tamaño más pequeño
-    end
-    if BIS_StatsText.SetWidth then
-        BIS_StatsText:SetWidth(180) -- ajusta este valor si necesitas más o menos ancho
-    end
-    local lines = {}
-    if BIS_SelectedRace == "Gnomo" then
-        table.insert(lines, "|cff00bfffMaestro en escapar: Elimina efectos de enraizado o reducción de movimiento|r")
-        table.insert(lines, "") -- línea vacía
-        table.insert(lines, "|cff00bfff+5% al maná máximo.|r")
-        table.insert(lines, "") -- línea vacía
-        table.insert(lines, "|cff00bfffAumenta en 10 la resistencia a Arcano.")
-    end
-    if BIS_SelectedRace == "Trol" then
-        table.insert(lines, "|cff00bfff+1% crit con Arcos/Arrojadizas.|r")
-        table.insert(lines, "") -- línea vacía
-        table.insert(lines, "|cff00bfffRabiar: Aumenta tu velocidad de ataque y lanzamiento un 20%.|r")
-        table.insert(lines, "") -- línea vacía
-        table.insert(lines, "|cff00bfffRegeneración: 10% más regeneración de vida; puedes regenerar en combate.|r")
-        table.insert(lines, "") -- línea vacía
-        table.insert(lines, "|cff00bfffMatanza de bestias: Infliges 5% más de daño a bestias.|r")
-    end
-    if BIS_SelectedRace == "Tauren" then
-        table.insert(lines, "|cff00bfffPisotón de guerra: Aturde hasta 5 enemigos cercanos durante 2 s.|r")
-        table.insert(lines, "") -- línea vacía
-        table.insert(lines, "|cff00bfffResistencia a la Naturaleza: Aumenta en 10 tu resistencia a Naturaleza.|r")
-        table.insert(lines, "") -- línea vacía
-        table.insert(lines, "|cff00bfff+5% salud base.|r")
-    end
-    if BIS_SelectedRace == "No-muerto" then
-        table.insert(lines, "|cff00bfff+10 resistencia a sombras.|r")
-        table.insert(lines, "") -- línea vacía
-        table.insert(lines, "|cff00bfffVoluntad de los Renegados: Rompe miedo, sueño y encantamiento.|r")
-    end
-    if BIS_SelectedRace == "Humano" then
-        table.insert(lines, "|cff00bfff+3 pericia en espadas y mazas.|r")
-        table.insert(lines, "") -- línea vacía
-        table.insert(lines, "|cff00bfff+3% espiritu.|r")
-    end
-    if BIS_SelectedRace == "Elfo de sangre" then
-        table.insert(lines, "|cff00bfffResistencia mágica: Aumenta en 2% tu resistencia a todas las escuelas mágicas.|r")
-        table.insert(lines, "") -- línea vacía
-        table.insert(lines, "|cff00bfffSilencia a los enemigos cercanos 2 s e interrumpe lanzamientos, y restaura energía/maná/poder rúnico.|r")
-    end
-    if BIS_SelectedRace == "Enano" then
-        table.insert(lines, "|cff00bfff+5 pericia con mazas.|r")
-        table.insert(lines, "") -- línea vacía
-        table.insert(lines, "|cff00bfffEspecialización con armas de fuego: Aumenta en 1% la probabilidad de crítico con armas de fuego.|r")
-        table.insert(lines, "") -- línea vacía
-        table.insert(lines, "|cff00bfffForma de piedra: Elimina veneno, enfermedades y sangrados, y aumenta tu armadura un 10% durante 8 s.|r")
-        table.insert(lines, "") -- línea vacía
-        table.insert(lines, "|cff00bfff+1% resistencia a la escarcha.|r")
-    end
-    if BIS_SelectedRace == "Elfo de la noche" then
-        table.insert(lines, "|cff00bfff+2% esquivar.|r")
-        table.insert(lines, "") -- línea vacía
-        table.insert(lines, "|cff00bfff+1% resistencia a la naturaleza.|r")
-        table.insert(lines, "") -- línea vacía
-        table.insert(lines, "|cff00bfffFusión de las Sombras: Te oculta, como Pícaro o Druida en sigilo.|r")
-    end
-    if BIS_SelectedRace == "Orco" then
-        table.insert(lines, "|cff00bfff+5 pericia con hachas y armas de asta.|r")
-        table.insert(lines, "") -- línea vacía
-        table.insert(lines, "|cff00bfffFuria sangrienta: Aumenta tu poder de ataque y poder con hechizos durante 15 s, pero reduce sanación recibida un 50% mientras dura.|r")
-        table.insert(lines, "") -- línea vacía
-        table.insert(lines, "|cff00bfffDureza: Reduce la duración de aturdimientos un 15%.|r")
-        table.insert(lines, "|cff00bfffMando: Tus mascotas infligen 5% más de daño.|r")
-    end
-        if BIS_SelectedRace == "Draenei" then
-        table.insert(lines, "|cff00bfff+1% resistencia a las sombras.|r")
-        table.insert(lines, "") -- línea vacía
-        table.insert(lines, "|cff00bfffPresencia heroica: Aumenta en 1% la probabilidad de golpe de todo tu grupo de 5 jugadores.|r")
-        table.insert(lines, "") -- línea vacía
-        table.insert(lines, "|cff00bfffDon de los Naaru: Sana a lo largo de 15 s.|r")
-    end
-    BIS_StatsText:SetText(table.concat(lines, "\n"))
-end
+-- function BIS_UpdateStatsText() end -- Función deshabilitada
 
 -- Actualizar stats al cambiar set, guardar/cargar equipo o editar slot
+--[[
 local old_LoadBIS = LoadBIS
 function LoadBIS(...)
     if old_LoadBIS then old_LoadBIS(...) end
-    BIS_UpdateStatsText()
+    -- BIS_UpdateStatsText() -- Deshabilitado
 end
 local old_SaveBIS = SaveBIS
 function SaveBIS(...)
     if old_SaveBIS then old_SaveBIS(...) end
-    BIS_UpdateStatsText()
+    -- BIS_UpdateStatsText() -- Deshabilitado
 end
--- También actualizar al abrir el frame
 local old_ToggleBISFrame = ToggleBISFrame
 ToggleBISFrame = function(...)
     if old_ToggleBISFrame then old_ToggleBISFrame(...) end
-    BIS_UpdateStatsText()
+    -- BIS_UpdateStatsText() -- Deshabilitado
 end
+]]
 
 -- Al pulsar Enter, buscar el ítem y mostrar el icono
 BIS_InputBox:SetScript("OnEnterPressed", function(self)
@@ -1157,16 +737,4 @@ function ChatEdit_InsertLink(link)
     end
 end
 
--- Comando para mostrar los stats totales en el chat
-SLASH_BISSTATS1 = "/bisstats"
-SlashCmdList["BISSTATS"] = function()
-    local stats = BIS_CalculateStats()
-    -- print("Resumen de stats del set BIS actual:")
-    for stat, value in pairs(stats) do
-    -- print(stat..": "..value)
-    end
-    if not next(stats) then
-    -- print("No hay piezas válidas configuradas en el set BIS actual.")
-    end
-end
-
+-- Comando /bisstats deshabilitado para evitar taint y problemas de estadísticas
