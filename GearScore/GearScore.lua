@@ -1,49 +1,3 @@
--- Inicializar backup por personaje para que siempre exista y se guarde
-if not GS_CharBackup then GS_CharBackup = {} end
--- ================== COPIA DE SEGURIDAD DE GS_DATA ===================
--- Copia profunda de tablas (no referencia)
-local function GS_DeepCopy(orig)
-	local orig_type = type(orig)
-	local copy
-	if orig_type == 'table' then
-		copy = {}
-		for orig_key, orig_value in next, orig, nil do
-			copy[GS_DeepCopy(orig_key)] = GS_DeepCopy(orig_value)
-		end
-		setmetatable(copy, GS_DeepCopy(getmetatable(orig)))
-	else
-		copy = orig
-	end
-	return copy
-end
-
-
--- Comando para crear copia de seguridad en SavedVariablesPerCharacter
-SLASH_GS_BACKUP1 = "/gsbackup"
-SlashCmdList["GS_BACKUP"] = function()
-	if GS_Data then
-		GS_CharBackup = GS_DeepCopy(GS_Data)
-		print("|cff00ff00[GearScore]|r Copia de seguridad creada en GS_CharBackup (por personaje).")
-	else
-		print("|cffff0000[GearScore]|r No hay datos para respaldar.")
-	end
-end
-
--- Comando para restaurar la copia de seguridad desde SavedVariablesPerCharacter
-SLASH_GS_RESTORE1 = "/gsrestore"
-SlashCmdList["GS_RESTORE"] = function()
-	if GS_CharBackup then
-		GS_Data = GS_DeepCopy(GS_CharBackup)
-		-- Reparar estructura mínima necesaria
-		if not GS_Data then GS_Data = {} end
-		local realm = GetRealmName() or "UnknownRealm"
-		if not GS_Data[realm] then GS_Data[realm] = { ["Players"] = {} } end
-		if not GS_Data[realm].Players then GS_Data[realm].Players = {} end
-		print("|cff00ff00[GearScore]|r GS_Data restaurado desde GS_CharBackup (por personaje).")
-	else
-		print("|cffff0000[GearScore]|r No hay copia de seguridad para restaurar en GS_CharBackup.")
-	end
-end
 
 
 -------------------------------------------------------------------------------
@@ -69,8 +23,7 @@ end
 -- Most functions of GearScore are disabled while in combat to prevent any lag or unwanted effects. I have decided to enable a function that requires manual operation to work.
 -- If you're using the /gs window and target another player then the window will update for that player even if your in combat. However the addon will not inspect to request new information if your in combat. Mostly this will allow players to check gear/stats/expereince on a raid member while clearing trash.
 -- Added Halion 10/25 to MISC group of the EXP tab.
-GS_BlockAllInspects = false
-GS_HookEnabled = true
+
 ------------------------------------------------------------------------------
 function GearScore_OnUpdate(self, elapsed)
 --Code use to Function Timing of Transmition Information--
@@ -180,6 +133,9 @@ function GearScore_OnEvent(GS_Nil, GS_EventName, GS_Prefix, GS_AddonMessage, GS_
 						GearScore_StoreBasicInfo(UnitName("target"), "target");
 						GearScore_DisplayUnit(UnitName("target"), 1);
 					end
+					
+					-- Mensaje informativo opcional
+					print("|cffFFFF00GearScore:|r Inspeccionando " .. UnitName("target") .. " automáticamente...")
 				else
 					-- Si no podemos inspeccionar, guardamos información básica
 					GearScore_StoreBasicInfo(UnitName("target"), "target");
@@ -374,20 +330,9 @@ function GearScore_ComposeRecord(tbl, GS_Sender)
 end
 
 function GearScore_Prune()
-		--local time, monthago = GearScore_GetTimeStamp()
-		for i, v in pairs(GS_Data[GetRealmName()].Players) do 
-			--if ( tonumber(v.Level) < GS_Settings["MinLevel"] ) then GS_Data[GetRealmName()].Players[i] = nil; end;
-			if ( ( GS_Factions[v.Faction] ~= UnitFactionGroup("player") ) and ( GS_Settings["KeepFaction"] == -1 ) ) or ( ( tonumber(v.Level) < GS_Settings["MinLevel"] ) and ( v.Name ~= UnitName("player") ) ) then GS_Data[GetRealmName()].Players[v.Name] = nil; end
-			if not v.GearScore or not v.Name or not v.Sex or not v.Equip or v.Location == nil or not v.Level or not v.Faction or not v.Guild or not v.Race or not v.Class or not v.Date or not v.Average or not v.Scanned then GS_Data[GetRealmName()].Players[i] = nil; end
-			if ( string.find(v.Scanned, "<") ) then GS_Data[GetRealmName()].Players[v.Name] = nil; end
-			if v.Guild == "<>" or v.Guild == "" then GS_Data[GetRealmName()].Players[v.Name].Guild = "*"; end
-			if ( string.find(v.Guild, "<") ) then GS_Data[GetRealmName()].Players[v.Name].Guild = string.sub(v.Guild, 2, strlen(v.Guild) - 1); end
-			if ( (type(tonumber(v.Guild))) == "number" ) then GS_Data[GetRealmName()].Players[v.Name] = nil; end
-			if v.Scanned == "LOLGearScore" then GS_Data[GetRealmName()].Players[v.Name] = nil; end
-			--if ( GearScore_GetDate(v.Date) > 30 )
-			   --if ( GearScore_GetDate(v.Date) > 30 ) then print("Old Record Found     "..i); end
-			  --if v.Guild == "<>" then GS_Data[GetRealmName()].Players[v.Name].Guild = "*"; end
-		end
+	-- Protección total: nunca borrar la base de datos ni registros
+	-- Esta función queda desactivada para evitar cualquier pérdida de datos
+	print("[GearScore] Protección activa: nunca se borrará la base de datos automáticamente.")
 end
 
 -- Función para almacenar información básica cuando no podemos inspeccionar
@@ -448,12 +393,6 @@ end
 
 -------------------------- Get Mouseover Score -----------------------------------
 function GearScore_GetScore(Name, Target)
-	-- Refuerzo: asegurar estructura de la DB
-	local realm = GetRealmName() or "UnknownRealm"
-	if not GS_Data then GS_Data = {} end
-	if not GS_Data[realm] then GS_Data[realm] = { ["Players"] = {} } end
-	if not GS_Data[realm].Players then GS_Data[realm].Players = {} end
-
 	if ( UnitIsPlayer(Target) ) then
 		local PlayerClass, PlayerEnglishClass = UnitClass(Target);
 		local GearScore = 0; local PVPScore = 0; local ItemCount = 0; local LevelTotal = 0; local TitanGrip = 1; local TempEquip = {}; local TempPVPScore = 0
@@ -593,11 +532,10 @@ function GearScore_GetScore(Name, Target)
 		end
 
 
-	-- Permitir guardar aunque GearScore sea 0
-	-- if ( GearScore <= 0 ) and ( Name ~= UnitName("player") ) then
-	--     GearScore = 0; return;
-	-- elseif ( Name == UnitName("player") ) and ( GearScore <= 0 ) then
-	--     GearScore = 0; end
+		if ( GearScore <= 0 ) and ( Name ~= UnitName("player") ) then
+			GearScore = 0; return;
+		elseif ( Name == UnitName("player") ) and ( GearScore <= 0 ) then
+			GearScore = 0; end
 		
 		--if ( GearScore < 0 ) and ( PVPScore < 0 ) then return 0, 0; end
 		--if ( PVPScore < 0 ) then PVPScore = 0; end
@@ -1416,49 +1354,38 @@ function GearScore_HookSetUnit(arg1, arg2)
 	--GearScore_Request(Name)
 end
 
-function GearScoreChatAdd(self, event, msg, arg1, ...)
-    -- Ignorar mensajes de sistema específicos
-    if msg == "No estas en grupo." then 
-        return true 
-    end  
+function GearScoreChatAdd(self,event,msg,arg1,...)
+if ( msg == "No estas en grupo." ) then return true; end   
+if ( GS_ExchangeName ) then if ( msg == "No player named '"..GS_ExchangeName.."' is currently playing." ) then GS_ExchangeCount = nil; print("¡Transmisión interrumpida!"); return true; end; end
+if ( GS_Settings["CHAT"] == 1 ) then
+	--msg = "(1234): "..msg
 
-    if GS_ExchangeName and msg == ("No player named '"..GS_ExchangeName.."' is currently playing.") then
-        GS_ExchangeCount = nil
-        print("¡Transmisión interrumpida!")
-        return true
-    end
+		--print("A", GS_AddonMessage, "B", GS_Whisper, "C", GS_Sender)
+		local Who = arg1; local Message = msg; local ExtraMessage = ""; local ColorClass = "";
+		if GS_Data[GetRealmName()].Players[Who] then
+			if GS_Data[GetRealmName()].Players[Who].Class and GS_Classes[GS_Data[GetRealmName()].Players[Who].Class] and GS_ClassInfo[GS_Classes[GS_Data[GetRealmName()].Players[Who].Class]] then
+				ColorClass = "|cff"..string.format("%02x%02x%02x", GS_ClassInfo[GS_Classes[GS_Data[GetRealmName()].Players[Who].Class]].Red * 255, GS_ClassInfo[GS_Classes[GS_Data[GetRealmName()].Players[Who].Class]].Green * 255, GS_ClassInfo[GS_Classes[GS_Data[GetRealmName()].Players[Who].Class]].Blue * 255)
+			else
+				ColorClass = "|cffffffff" -- Blanco por defecto
+			end
+			local Red, Green, Blue = GearScore_GetQuality(GS_Data[GetRealmName()].Players[Who].GearScore)
+			local ColorGearScore = "|cff"..string.format("%02x%02x%02x", Red * 255, Blue * 255, Green * 255)
+			ExtraMessage = "("..ColorGearScore..tostring(GS_Data[GetRealmName()].Players[Who].GearScore).."|r): " ;
+			ExtraMessage = (ColorGearScore.."|Hplayer:X33"..Who.."|h("..tostring(GS_Data[GetRealmName()].Players[Who].GearScore)..")|h|r ")
 
-    if GS_Settings["CHAT"] == 1 then
-        local Who = arg1
-        local Message = msg
-        local ExtraMessage = ""
-        local ColorClass = "|cffffffff" -- Blanco por defecto
+		end
 
-        if GS_Data[GetRealmName()].Players[Who] then
-            local playerData = GS_Data[GetRealmName()].Players[Who]
-            local classToken = GS_Classes[playerData.Class]
-            local classInfo = GS_ClassInfo[classToken]
+		local NewMessage = ExtraMessage..Message
+		--local NewMessage = Message
+		--local arg1 = arg1..ExtraMessage
+		--print(arg1)
 
-            if classInfo then
-                ColorClass = "|cff"..string.format("%02x%02x%02x", classInfo.Red*255, classInfo.Green*255, classInfo.Blue*255)
-            end
-
-            local Red, Green, Blue = GearScore_GetQuality(playerData.GearScore)
-            local ColorGearScore = "|cff"..string.format("%02x%02x%02x", Red*255, Green*255, Blue*255)
-
-            ExtraMessage = (ColorGearScore.."|Hplayer:X33"..Who.."|h("..tostring(playerData.GearScore)..")|h|r ")
-        end
-
-        local NewMessage = ExtraMessage..Message
-        return false, NewMessage, arg1, ...
-    end
-
-    return false, msg, arg1, ...
+--return true
+	return false,NewMessage,arg1,...
+else
+	return false
 end
-
--- El hook debe ir después de la función y variables globales
--- Coloca este bloque aquí para evitar el error de función no definida
-
+end
 
 --function GearScoreChatAddddd(self,event,msg,arg1,...)
 --print("Captured Info: ", msg)
@@ -2183,8 +2110,7 @@ function GearScore_DisplayUnit(Name, Auto)
 			ColorStringDate = "|cff"..string.format("%02x%02x%02x", DateRed * 255, DateGreen * 255, DateBlue * 255) 
 			local historyText = (GS_CurrentHistoryIndex > 0) and " (Historial)" or ""
 			local scannedBy = GS_Data[GetRealmName()].Players[Name].Scanned or "Desconocido"
-			GS_DateText:SetText(ColorStringDate..fechaTexto..historyText.." escaneado por "..scannedBy.."|r")
-			GS_DateText:SetJustifyH("LEFT")
+			GS_DateText:SetText(ColorStringDate..fechaTexto.."|r"..historyText.." escaneado por "..scannedBy)
 		else
 			GS_DateText:SetText("Fecha de escaneo: Desconocida")
 		end
@@ -2861,28 +2787,6 @@ GearScore2:SetText("GearScore")
 GearScore2:SetPoint("BOTTOMLEFT",PaperDollFrame,"TOPLEFT",72,-265)
 GearScore2:Show()
 ItemRefTooltip:HookScript("OnTooltipSetItem", GearScore_HookRefItem)
--- Usar hooksecurefunc para evitar taint
-function GS_ShouldBlockInspect()
-    if not GS_HookEnabled then
-        return true
-    end
-    if GS_BlockAllInspects then
-        return true
-    end
-    if PaperDollFrame and PaperDollFrame:IsVisible() then
-        return true
-    end
-    local _, class = UnitClass("player")
-    if class == "ROGUE" then
-        local hasMain, _, _, hasOff = GetWeaponEnchantInfo()
-        if hasMain or hasOff then
-            return true
-        end
-    end
-    return false
-end
-
-
 GearScore_Original_SetInventoryItem = GameTooltip.SetInventoryItem
 GameTooltip.SetInventoryItem = GearScore_OnEnter
 -- Función simple para obtener información de gemas
@@ -3131,7 +3035,7 @@ end
 function GS_ShowCurrentEquipment()
 	GS_CurrentHistoryIndex = 0
 	if GS_DisplayPlayer then
---		print("|cffFFFF00GearScore:|r Mostrando equipo actual de " .. GS_DisplayPlayer)
+		print("|cffFFFF00GearScore:|r Mostrando equipo actual de " .. GS_DisplayPlayer)
 		GearScore_DisplayUnit(GS_DisplayPlayer)
 	end
 end
@@ -3236,21 +3140,8 @@ function GearScore_CreateHistoryButton()
 		end)
 		bisButton:Show()
 		GS_EquipBISButton = bisButton
-
-		-- Crear el botón Copiar BIS justo después
-		if not GS_CopyBISButton then
-			local copyBtn = CreateFrame("Button", "GS_CopyBISButton", GS_DisplayFrame, "UIPanelButtonTemplate")
-			copyBtn:SetSize(80, 22)--120
-			copyBtn:SetPoint("TOPLEFT", GS_DisplayFrame, "TOPLEFT", 198, -440)
-			copyBtn:SetText("Copiar BIS")
-			copyBtn:SetScript("OnClick", function()
-				   if _G.ShowCopySetDialog then ShowCopySetDialog() end
-			end)
-			copyBtn:Show()
-			GS_CopyBISButton = copyBtn
-		end
 	end
-	print("|cffFFFF00GearScore:|r Botón de historial, Equipo BIS y Copiar BIS creados programáticamente")
+	print("|cffFFFF00GearScore:|r Botón de historial y Equipo BIS creados programáticamente")
 end
 
 function GearScore_UpdateHistoryButton(playerName)
@@ -3319,7 +3210,7 @@ function GearScore_HistoryButton_OnClick()
 	
 	-- Actualizar display
 	GearScore_DisplayUnit(playerName)
---	print("|cffFFFF00GearScore:|r " .. (GS_CurrentHistoryIndex == 0 and "Mostrando equipo actual" or ("Mostrando historial " .. GS_CurrentHistoryIndex .. "/" .. #history)))
+	print("|cffFFFF00GearScore:|r " .. (GS_CurrentHistoryIndex == 0 and "Mostrando equipo actual" or ("Mostrando historial " .. GS_CurrentHistoryIndex .. "/" .. #history)))
 end
 
 -- Función para forzar actualización del botón
@@ -3330,7 +3221,7 @@ function GS_ForceUpdateHistoryButton()
 		return
 	end
 	
---	print("|cffFFFF00GearScore:|r Forzando actualización del botón para " .. currentPlayer)
+	print("|cffFFFF00GearScore:|r Forzando actualización del botón para " .. currentPlayer)
 	GearScore_UpdateHistoryButton(currentPlayer)
 end
 
