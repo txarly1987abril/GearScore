@@ -1,3 +1,49 @@
+-- Inicializar backup por personaje para que siempre exista y se guarde
+if not GS_CharBackup then GS_CharBackup = {} end
+-- ================== COPIA DE SEGURIDAD DE GS_DATA ===================
+-- Copia profunda de tablas (no referencia)
+local function GS_DeepCopy(orig)
+	local orig_type = type(orig)
+	local copy
+	if orig_type == 'table' then
+		copy = {}
+		for orig_key, orig_value in next, orig, nil do
+			copy[GS_DeepCopy(orig_key)] = GS_DeepCopy(orig_value)
+		end
+		setmetatable(copy, GS_DeepCopy(getmetatable(orig)))
+	else
+		copy = orig
+	end
+	return copy
+end
+
+
+-- Comando para crear copia de seguridad en SavedVariablesPerCharacter
+SLASH_GS_BACKUP1 = "/gsbackup"
+SlashCmdList["GS_BACKUP"] = function()
+	if GS_Data then
+		GS_CharBackup = GS_DeepCopy(GS_Data)
+		print("|cff00ff00[GearScore]|r Copia de seguridad creada en GS_CharBackup (por personaje).")
+	else
+		print("|cffff0000[GearScore]|r No hay datos para respaldar.")
+	end
+end
+
+-- Comando para restaurar la copia de seguridad desde SavedVariablesPerCharacter
+SLASH_GS_RESTORE1 = "/gsrestore"
+SlashCmdList["GS_RESTORE"] = function()
+	if GS_CharBackup then
+		GS_Data = GS_DeepCopy(GS_CharBackup)
+		-- Reparar estructura mínima necesaria
+		if not GS_Data then GS_Data = {} end
+		local realm = GetRealmName() or "UnknownRealm"
+		if not GS_Data[realm] then GS_Data[realm] = { ["Players"] = {} } end
+		if not GS_Data[realm].Players then GS_Data[realm].Players = {} end
+		print("|cff00ff00[GearScore]|r GS_Data restaurado desde GS_CharBackup (por personaje).")
+	else
+		print("|cffff0000[GearScore]|r No hay copia de seguridad para restaurar en GS_CharBackup.")
+	end
+end
 
 
 -------------------------------------------------------------------------------
@@ -402,6 +448,12 @@ end
 
 -------------------------- Get Mouseover Score -----------------------------------
 function GearScore_GetScore(Name, Target)
+	-- Refuerzo: asegurar estructura de la DB
+	local realm = GetRealmName() or "UnknownRealm"
+	if not GS_Data then GS_Data = {} end
+	if not GS_Data[realm] then GS_Data[realm] = { ["Players"] = {} } end
+	if not GS_Data[realm].Players then GS_Data[realm].Players = {} end
+
 	if ( UnitIsPlayer(Target) ) then
 		local PlayerClass, PlayerEnglishClass = UnitClass(Target);
 		local GearScore = 0; local PVPScore = 0; local ItemCount = 0; local LevelTotal = 0; local TitanGrip = 1; local TempEquip = {}; local TempPVPScore = 0
@@ -541,10 +593,11 @@ function GearScore_GetScore(Name, Target)
 		end
 
 
-		if ( GearScore <= 0 ) and ( Name ~= UnitName("player") ) then
-			GearScore = 0; return;
-		elseif ( Name == UnitName("player") ) and ( GearScore <= 0 ) then
-			GearScore = 0; end
+	-- Permitir guardar aunque GearScore sea 0
+	-- if ( GearScore <= 0 ) and ( Name ~= UnitName("player") ) then
+	--     GearScore = 0; return;
+	-- elseif ( Name == UnitName("player") ) and ( GearScore <= 0 ) then
+	--     GearScore = 0; end
 		
 		--if ( GearScore < 0 ) and ( PVPScore < 0 ) then return 0, 0; end
 		--if ( PVPScore < 0 ) then PVPScore = 0; end
@@ -2830,17 +2883,8 @@ function GS_ShouldBlockInspect()
 end
 
 
-if not GearScore_Hooked then
-	hooksecurefunc(GameTooltip, "SetInventoryItem", function(self, ...)
-		-- Añade aquí la funcionalidad extra de GearScore_OnEnter
-		if not GS_ShouldBlockInspect() and UnitName("target") then
-			NotifyInspect("target")
-			GS_LastNotified = UnitName("target")
-		end
-		-- Si necesitas más lógica, añádela aquí
-	end)
-	GearScore_Hooked = true
-end
+GearScore_Original_SetInventoryItem = GameTooltip.SetInventoryItem
+GameTooltip.SetInventoryItem = GearScore_OnEnter
 -- Función simple para obtener información de gemas
 function GS_GetPlayerGems(playerName)
 	if not GS_Data[GetRealmName()].Players[playerName] or not GS_Data[GetRealmName()].Players[playerName].Equip then return end
@@ -3501,9 +3545,6 @@ GearScore_CreateHistoryButton()
 
 GS_DisplayFrame:Hide()
 LibQTip = LibStub("LibQTipClick-1.1")
-
-
-
 
 
 
