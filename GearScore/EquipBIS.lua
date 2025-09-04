@@ -1,3 +1,4 @@
+if not BIS_SelectedRaceDB then BIS_SelectedRaceDB = {} end
 -- === BIS ALERTA DE PIEZA BIS EN CHAT ===
 
 if type(BIS_Items) ~= "table" then
@@ -247,6 +248,16 @@ local function BIS_Init()
             if GS_SCANSET then GS_SCANSET("") end
         end)
     end
+        -- Botón Copiar BIS en la ventana /gs (GS_DisplayFrame), parte baja a la derecha del botón Buscar
+        if _G["GS_SearchButton"] and not BIS_CopyButton then
+            BIS_CopyButton = CreateFrame("Button", "BIS_CopyButton", GS_DisplayFrame, "UIPanelButtonTemplate")
+            BIS_CopyButton:SetSize(100, 24)
+            BIS_CopyButton:SetText("Copiar BIS")
+            BIS_CopyButton:SetPoint("BOTTOMLEFT", _G["GS_SearchButton"], "BOTTOMRIGHT", 10, 30)
+            BIS_CopyButton:SetScript("OnClick", function()
+                if ShowCopySetDialog then ShowCopySetDialog() end
+            end)
+        end
     -- Botón para guardar stats base eliminado
 end
 
@@ -738,3 +749,6 @@ function ChatEdit_InsertLink(link)
 end
 
 -- Comando /bisstats deshabilitado para evitar taint y problemas de estadísticas
+
+
+
